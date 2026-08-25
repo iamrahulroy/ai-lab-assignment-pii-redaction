@@ -1,0 +1,28 @@
+[build-system]
+requires = ["setuptools>=77"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "pii-redactor"
+version = "0.1.0"
+description = "Format-preserving DOCX PII pseudonymization CLI"
+requires-python = ">=3.11,<3.12"
+dependencies = [
+    "cryptography==48.0.1",
+    "Faker==37.12.0",
+    "presidio-analyzer==2.2.364",
+    "presidio-anonymizer==2.2.364",
+    "python-docx==1.2.0",
+    "spacy==3.8.16",
+]
+
+[project.optional-dependencies]
+dev = ["pytest==9.1.1"]
+nlp = [
+    "en-core-web-lg @ https://github.com/explosion/spacy-models/releases/download/en_core_web_lg-3.8.0/en_core_web_lg-3.8.0-py3-none-any.whl",
+]
+
+[tool.pytest.ini_options]
+addopts = "-ra"
+pythonpath = ["src"]
+testpaths = ["tests"]
