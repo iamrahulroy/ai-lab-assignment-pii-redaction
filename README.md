@@ -1,30 +1,19 @@
 # PII Redaction Tool
 
-This assignment provides a reproducible Python CLI that pseudonymizes PII in a
-DOCX while preserving its OOXML structure. It always writes a separate output
-bundle; the supplied DOCX and PDF are immutable inputs.
+A reproducible Python CLI that reads the supplied DOCX, replaces detected PII
+with consistent fake alternatives, and writes a separate output bundle. The
+source DOCX and assignment PDF are never modified.
 
-## Run it
-
-Create or update the dedicated environment:
+## Run
 
 ```bash
 conda env update -n pii-redactor -f environment.yml --prune
-```
 
-Generate a Fernet key in a secure location outside the repository:
-
-```bash
 conda run -n pii-redactor python -c \
   'from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())' \
   > /secure/path/redaction_mapping.key
 chmod 600 /secure/path/redaction_mapping.key
-```
 
-Run the redactor. `--output-dir` must not already exist because the directory
-is published atomically:
-
-```bash
 conda run -n pii-redactor pii-redactor \
   --input "Red Herring Prospectus (3).docx" \
   --output-dir output-bundle \
@@ -33,86 +22,48 @@ conda run -n pii-redactor pii-redactor \
   --key-file /secure/path/redaction_mapping.key
 ```
 
-The bundle contains:
+`--output-dir` must not already exist. The generated bundle contains:
 
 - `redacted_prospectus.docx`
 - `redaction_mapping.json.enc`
 - `audit_report.json`
 
-The key can instead be supplied through `PII_REDACTOR_MAPPING_KEY`. The seed
-makes fake-value generation reproducible; it is not an encryption secret. The
-mapping key is intentionally never committed or written to the audit. Automatic
-unredaction is outside the assignment scope.
-
-## Architecture
+## Approach
 
 ```text
-immutable DOCX
-  -> logical OOXML paragraph text
-  -> Presidio Analyzer typed spans and scores
-  -> deterministic thresholds and overlap resolution
-  -> Presidio Anonymizer custom pseudonym operators
-  -> document-scoped (type, normalized original) mapping
-  -> exact replay of unambiguous known values missed by contextual NER
-  -> run-preserving OOXML patches
-  -> media, metadata, relationship, and hidden-text sanitization
-  -> residual, image, ZIP, mapping, and hash validation
-  -> atomic DOCX + encrypted mapping + PII-safe audit publication
+DOCX OOXML text
+  -> Presidio Analyzer (NER, regex, context, deny list)
+  -> deterministic score/overlap resolution
+  -> Presidio Anonymizer with custom fake-value operator
+  -> document-scoped consistent mapping
+  -> known-value replay
+  -> OOXML patching and sanitization
+  -> validation, encryption, and atomic publication
 ```
 
-[Presidio Analyzer](https://presidio.dataprivacystack.org/analyzer/) performs
-detection; it does not invent replacements. Presidio Anonymizer calls our
-custom operator, which obtains a type-appropriate fake from the document-scoped
-registry. This keeps repeated values consistent without mutable global state.
-The deny-list and regex extension mechanisms described in Presidio's
-[deny-list tutorial](https://presidio.dataprivacystack.org/tutorial/01_deny_list/)
-and [regex tutorial](https://presidio.dataprivacystack.org/tutorial/02_regex/)
-informed the custom recognizer boundary.
+The hybrid detector uses spaCy NER for full names and companies; Presidio and
+custom recognizers for emails, phones, addresses, SSNs, credit cards, DOBs, and
+IP addresses; and document-specific recognizers for PAN, Aadhaar, DIN, and CIN.
+An isolated DIN without local Word-paragraph context is configured through a
+Presidio deny list. See the Presidio [Analyzer](https://presidio.dataprivacystack.org/analyzer/),
+[deny-list](https://presidio.dataprivacystack.org/tutorial/01_deny_list/), and
+[regex](https://presidio.dataprivacystack.org/tutorial/02_regex/) documentation.
 
-Detection is hybrid:
+Mappings are keyed by `(entity type, normalized original)`, so formatting or
+case variants reuse the same deterministic fake. A second pass replays safe,
+unambiguous known values where contextual NER was inconsistent. The DOCX
+adapter preserves runs and styles where possible, scrubs metadata and external
+links, and replaces all embedded images with same-dimension neutral
+placeholders because images may contain unscanned PII.
 
-- spaCy NER supplies `PERSON` and `ORGANIZATION` candidates.
-- Validated/contextual recognizers cover emails, phones, addresses, SSNs,
-  credit cards, DOBs, and IP addresses.
-- PAN, Aadhaar, DIN, and CIN are document-specific extensions.
-- `config/default.json` uses a document-specific Presidio deny list for the
-  isolated DIN whose Word paragraph contains no identifying context.
-- Deterministic thresholds, generic-organization filtering, and overlap
-  precedence prevent nested email/phone/identifier detections.
-
-The DOCX adapter edits `w:t`, deleted text, field text, and DrawingML text in
-body paragraphs, tables, headers, footers, comments, footnotes/endnotes, text
-boxes, and tracked changes. Replacements occupy the first touched run, so its
-style is retained. Custom properties, reviewer metadata, revision IDs, and
-external targets are scrubbed. All eight supplied images are replaced by
-same-pixel-dimension neutral placeholders because identity cards, logos, and QR
-codes may contain PII; OCR plus partial image redaction was intentionally not
-added.
-
-The design keeps CLI parsing, orchestration, detection, pseudonym generation,
-DOCX adaptation, validation, encrypted storage, and atomic publication behind
-narrow responsibilities. A new entity normally requires a recognizer,
-threshold/precedence entry, and fake generator without changing the CLI or
-publisher. For batch use, construct one Analyzer per worker and retain the
-per-document registry boundary.
-
-## Failure and security behavior
-
-Outputs are built in a same-filesystem temporary directory. The DOCX is opened
-and ZIP-tested; source/output hashes, removal of each representative mapped
-literal, embedded image bytes and dimensions, and encrypted mapping round-trip
-are checked before one atomic directory rename. Any detection, validation,
-encryption, or publication error
-returns non-zero and removes the stage. The safe audit contains only counts,
-versions, hashes, warnings, and timings—not originals or replacements.
-
-The encrypted mapping is sensitive even though it uses authenticated Fernet
-encryption. Keep its key separately, restrict access, rotate it according to
-the surrounding system's policy, and do not log decrypted records.
+The original-to-fake mapping is Fernet-encrypted with `0600` permissions. Keep
+the key outside the repository; the seed controls reproducibility and is not an
+encryption secret. Artifacts are built in a temporary directory and published
+with one rename only after DOCX, hash, mapping, image, and leakage checks pass.
 
 ## Evaluation
 
-Generate the report only through the checked-in evaluator:
+Generate the checked-in report with:
 
 ```bash
 conda run -n pii-redactor pii-redactor-evaluate \
@@ -120,50 +71,30 @@ conda run -n pii-redactor pii-redactor-evaluate \
   --output evaluation_report.md
 ```
 
-The annotation file contains a manually labelled, stratified sample derived
-from named prospectus paragraphs and a separate synthetic dataset for SSN,
-credit-card, DOB, IP, PAN, and Aadhaar categories absent from the source.
-Exact entity scoring requires both type and character span to match. The report
-also defines and computes token-label accuracy, F1/F2, per-type support, and
-residual leakage. Real and synthetic results appear separately before the
-secondary combined summary. See [evaluation_report.md](evaluation_report.md)
-for the generated numbers.
-
-Observed errors are informative: the real sample includes a director name that
-spaCy labels as an organization, producing one type-level person false negative
-and organization false positive while still covering the sensitive span. The
-structured Indian postal-address pattern was broadened after an initial leakage
-check found that the original street format was missed. Synthetic perfect scores
-show recognizer-path coverage only; they are not evidence of production accuracy.
+The evaluator uses exact entity type and character-span matching and reports
+TP/FP/FN, precision, recall, F1/F2, token-label accuracy, and residual leakage.
+Real prospectus annotations and synthetic cases for types absent from the source
+are reported separately. The real sample achieved `0.8750` precision,
+`0.8750` recall, and `0.9423` token accuracy; the secondary combined result was
+`0.9286` precision/recall and `0.9677` token accuracy. These figures come only
+from [evaluation_report.md](evaluation_report.md); the small labelled sample is
+not statistically representative of the full prospectus.
 
 ## Tradeoffs and limitations
 
-- The labelled sample is intentionally small and is not statistically
-  representative of the entire prospectus or other document domains.
-- Company-name redaction reduces business readability but follows the explicit
-  assignment requirement.
-- NER can misclassify unusual names and organizations; regexes can miss unseen
-  address/date formats or overmatch contextually similar text.
-- DOB detection requires birth context so ordinary prospectus dates are not
-  redacted, trading some recall for precision.
-- Whole-image replacement maximizes privacy recall but removes benign branding
-  and other useful pixels. There is no OCR claim or image-level metric.
-- Longer fake values can change wrapping or pagination even though runs, tables,
-  relationships, and styles are preserved.
-- The residual scanner checks known mapped/annotated originals; it cannot prove
-  the absence of PII that every recognizer and annotation missed.
-- Development annotations and configured deny lists contain source values and
-  need the same access controls as the input; a production deployment should
-  keep them outside the distributable package.
-- The checked-in validator performs structural validation. Canonical all-page
-  rendering was attempted but unavailable because `soffice` is not installed;
-  macOS Quick Look first-page review passed, but full visual review remains.
-
-Pure regex was rejected because names and companies are too variable. Pure NER
-was rejected because checksummed identifiers and contextual DOB rules benefit
-from deterministic validation. An LLM/OCR pipeline could broaden recall but
-adds nondeterminism, cost, data-governance risk, and a much larger evaluation
-surface than this assignment requires.
+- The real sample has one director name classified as an organization: the
+  sensitive span is redacted, but its entity type is wrong.
+- NER can miss unusual names/companies; regexes can miss new address or date
+  formats or overmatch similar business text. DOBs require birth context to
+  avoid redacting ordinary prospectus dates.
+- Company redaction and whole-image replacement improve privacy recall but
+  reduce document usefulness. Longer fake values can also change wrapping.
+- Validation checks known mappings and annotations; it cannot prove that PII
+  missed by every recognizer is absent. Images are replaced without OCR.
+- Structural DOCX and first-page Quick Look checks passed. Full all-page visual
+  rendering was unavailable because `soffice` was not installed.
+- Annotation and deny-list files contain source values and require the same
+  access controls as the input in a production deployment.
 
 ## Tests
 
@@ -171,7 +102,7 @@ surface than this assignment requires.
 conda run -n pii-redactor pytest -q
 ```
 
-The critical tests cover required entity detection, false-positive boundaries,
-stable encrypted mappings, split-run/package sanitization, all-or-nothing CLI
-failure behavior, metric arithmetic, immutable source hashes, and final bundle
+Critical tests cover required PII detection, false-positive boundaries,
+consistent encrypted mappings, split-run/hidden OOXML sanitization, immutable
+source hashes, metric arithmetic, atomic failure handling, and final bundle
 integrity.
