@@ -1,4 +1,6 @@
-from presidio_analyzer import AnalyzerEngine, RecognizerRegistry
+from collections.abc import Mapping
+
+from presidio_analyzer import AnalyzerEngine, PatternRecognizer, RecognizerRegistry
 from presidio_analyzer.nlp_engine import NlpEngineProvider
 from presidio_analyzer.predefined_recognizers import (
     CreditCardRecognizer,
@@ -57,26 +59,31 @@ class PresidioPseudonymizer:
         if not findings:
             return PseudonymizedText(text=text, replacements=())
 
-        operators = {
-            item.entity_type: self._operator_for(item.entity_type, registry)
-            for item in findings
-        }
-        anonymized = self._anonymizer.anonymize(
-            text=text,
-            analyzer_results=[self._as_anonymizer_result(item) for item in findings],
-            operators=operators,
-        )
-        replacements = tuple(
-            TextReplacement(
-                start=item.start,
-                end=item.end,
-                value=registry.existing_replacement_for(
-                    item.entity_type, text[item.start : item.end]
-                ),
+        replacements: list[TextReplacement] = []
+        for item in findings:
+            original = text[item.start : item.end]
+            anonymized = self._anonymizer.anonymize(
+                text=original,
+                analyzer_results=[self._as_segment_result(item)],
+                operators={
+                    item.entity_type: self._operator_for(
+                        item.entity_type, registry
+                    )
+                },
             )
-            for item in findings
+            replacements.append(
+                TextReplacement(
+                    start=item.start,
+                    end=item.end,
+                    value=anonymized.text,
+                )
+            )
+
+        resolved = tuple(replacements)
+        return PseudonymizedText(
+            text=self._apply_replacements(text, resolved),
+            replacements=resolved,
         )
-        return PseudonymizedText(text=anonymized.text, replacements=replacements)
 
     @staticmethod
     def _operator_for(
@@ -92,16 +99,30 @@ class PresidioPseudonymizer:
         )
 
     @staticmethod
-    def _as_anonymizer_result(entity: DetectedEntity) -> RecognizerResult:
+    def _as_segment_result(entity: DetectedEntity) -> RecognizerResult:
         return RecognizerResult(
             entity_type=entity.entity_type,
-            start=entity.start,
-            end=entity.end,
+            start=0,
+            end=entity.end - entity.start,
             score=entity.score,
         )
 
+    @staticmethod
+    def _apply_replacements(
+        text: str, replacements: tuple[TextReplacement, ...]
+    ) -> str:
+        redacted = text
+        ordered = sorted(
+            replacements, key=lambda value: value.start, reverse=True
+        )
+        for item in ordered:
+            redacted = redacted[: item.start] + item.value + redacted[item.end :]
+        return redacted
 
-def build_presidio_detector() -> PresidioDetector:
+
+def build_presidio_detector(
+    deny_lists: Mapping[str, tuple[str, ...]] | None = None,
+) -> PresidioDetector:
     nlp_engine = NlpEngineProvider(
         nlp_configuration={
             "nlp_engine_name": "spacy",
@@ -149,6 +170,14 @@ def build_presidio_detector() -> PresidioDetector:
     )
     for recognizer in recognizers:
         registry.add_recognizer(recognizer)
+    for entity_type, values in (deny_lists or {}).items():
+        registry.add_recognizer(
+            PatternRecognizer(
+                supported_entity=entity_type,
+                deny_list=list(values),
+                name=f"{entity_type} document deny list",
+            )
+        )
     registry.add_nlp_recognizer(nlp_engine)
     analyzer = AnalyzerEngine(
         registry=registry,

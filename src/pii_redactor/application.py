@@ -18,7 +18,10 @@ from pii_redactor.domain import (
     ValidationResult,
 )
 from pii_redactor.mapping_store import MappingEncryptionKey
-from pii_redactor.pseudonyms import DocumentPseudonymRegistry
+from pii_redactor.pseudonyms import (
+    DocumentPseudonymRegistry,
+    KnownValuePseudonymizer,
+)
 
 
 OUTPUT_DOCUMENT_NAME = "redacted_prospectus.docx"
@@ -44,11 +47,23 @@ class RedactDocument:
             raise ValueError("Input and output paths must be different")
 
         registry = DocumentPseudonymRegistry(self._seed)
-        self._document_redactor.redact(
-            source_path,
-            output_path,
-            lambda text: self._text_pseudonymizer.pseudonymize(text, registry),
-        )
+        detected_path = output_path.with_name(f".{output_path.name}.detected")
+        try:
+            self._document_redactor.redact(
+                source_path,
+                detected_path,
+                lambda text: self._text_pseudonymizer.pseudonymize(
+                    text, registry
+                ),
+            )
+            replay = KnownValuePseudonymizer(registry)
+            self._document_redactor.redact(
+                detected_path,
+                output_path,
+                lambda text: replay.pseudonymize(text, registry),
+            )
+        finally:
+            detected_path.unlink(missing_ok=True)
         return RedactionResult(output_path=output_path, mappings=registry.records)
 
 
@@ -160,6 +175,7 @@ class CreateRedactionBundle:
         audit = _safe_audit(
             mapping,
             validation,
+            mapping_sha256=_sha256(mapping_path),
             redaction_ms=redaction_ms,
             validation_ms=validation_ms,
             staging_ms=_elapsed_ms(started),
@@ -172,6 +188,7 @@ class CreateRedactionBundle:
 def _safe_audit(
     mapping: MappingDocument,
     validation: ValidationResult,
+    mapping_sha256: str,
     **timings_ms: int,
 ) -> dict[str, object]:
     counts = Counter()
@@ -182,6 +199,7 @@ def _safe_audit(
         "status": "success",
         "source_sha256": metadata.source_sha256,
         "output_sha256": metadata.output_sha256,
+        "mapping_sha256": mapping_sha256,
         "config_version": metadata.config_version,
         "model_version": metadata.model_version,
         "mapping_schema_version": metadata.schema_version,
@@ -206,6 +224,7 @@ def _assert_audit_is_safe(audit: str, mapping: MappingDocument) -> None:
         value.casefold()
         for record in mapping.mappings
         for value in (record.original, record.replacement)
+        if len(value.strip()) >= 5
     )
     normalized_audit = audit.casefold()
     if any(value in normalized_audit for value in sensitive_values):

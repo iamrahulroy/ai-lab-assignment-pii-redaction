@@ -1,0 +1,29 @@
+{
+  "config_version": "1",
+  "entity_counts": {
+    "EMAIL_ADDRESS": 104,
+    "IN_CIN": 9,
+    "IN_DIN": 1,
+    "ORGANIZATION": 3443,
+    "PERSON": 220,
+    "PHONE_NUMBER": 32,
+    "PHYSICAL_ADDRESS": 2
+  },
+  "mapping_schema_version": "1",
+  "mapping_sha256": "68b78640989a8eabaac889462f72b84e15b4ba4d6b3272ff502539fb99fe5065",
+  "model_version": "en_core_web_lg-3.8.0",
+  "output_sha256": "3735c26fc106a97e560cf134efb45d645ccdf6c705e100fc8e76fe2889368cd5",
+  "source_sha256": "8b5c93f7642d659e64b51be9f6172c86c2825417f376ca1800ed331515e6f929",
+  "status": "success",
+  "timings_ms": {
+    "redaction_ms": 52532,
+    "staging_ms": 56481,
+    "validation_ms": 3934
+  },
+  "total_entities": 3811,
+  "unique_mappings": 771,
+  "warnings": [
+    "embedded_images_replaced_without_ocr",
+    "visual_render_required_before_delivery"
+  ]
+}

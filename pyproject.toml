@@ -20,6 +20,7 @@ dependencies = [
 
 [project.scripts]
 pii-redactor = "pii_redactor.cli:entrypoint"
+pii-redactor-evaluate = "pii_redactor.evaluation:entrypoint"
 
 [project.optional-dependencies]
 dev = [

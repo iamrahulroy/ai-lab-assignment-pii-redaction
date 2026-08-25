@@ -18,6 +18,14 @@ ADDRESS_PATTERN = (
     r"(?:[ \t]+[A-Za-z][A-Za-z.-]*)*){1,3}"
     r"(?:[ \t]+\d{5,6}(?:-\d{4})?)?\b"
 )
+INDIAN_POSTAL_ADDRESS_PATTERN = (
+    r"(?:(?<=Address: )|^)"
+    r"(?=[^\n]{10,220}\b(?:Road|Rd|Street|St|Lane|Nagar)\b)"
+    r"[A-Z0-9][A-Za-z0-9 .,#/'()–-]{10,220}?"
+    r"\b\d{3}[ -]?\d{3}\b"
+    r"(?:[ ,–-]+[A-Za-z][A-Za-z ]+){0,2}"
+    r"(?=[.;]?(?:$|\n))"
+)
 
 DOB_PATTERNS = (
     Pattern(
@@ -100,7 +108,14 @@ def build_custom_recognizers() -> tuple[PatternRecognizer, ...]:
         PatternRecognizer(
             supported_entity=PHYSICAL_ADDRESS,
             name="Structured physical address recognizer",
-            patterns=[Pattern("Street and locality address", ADDRESS_PATTERN, 0.75)],
+            patterns=[
+                Pattern("Street and locality address", ADDRESS_PATTERN, 0.75),
+                Pattern(
+                    "Indian postal address with PIN",
+                    INDIAN_POSTAL_ADDRESS_PATTERN,
+                    0.80,
+                ),
+            ],
             context=["address", "office", "registered", "mailing"],
         ),
         DateOfBirthRecognizer(),

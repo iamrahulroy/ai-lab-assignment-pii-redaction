@@ -4,8 +4,9 @@ from datetime import datetime
 
 import pytest
 from cryptography.fernet import Fernet
+from presidio_anonymizer import AnonymizerEngine
 
-from pii_redactor.domain import MappingMetadata
+from pii_redactor.domain import DetectedEntity, MappingMetadata
 from pii_redactor.mapping_store import (
     MAPPING_KEY_ENV_VAR,
     EncryptedMappingStore,
@@ -13,7 +14,11 @@ from pii_redactor.mapping_store import (
     MappingEncryptionKey,
     MappingKeyLoader,
 )
-from pii_redactor.pseudonyms import DocumentPseudonymRegistry
+from pii_redactor.pseudonyms import (
+    DocumentPseudonymRegistry,
+    KnownValuePseudonymizer,
+)
+from pii_redactor.presidio_adapter import PresidioPseudonymizer
 
 
 def test_reuses_normalized_values_and_isolates_entity_types():
@@ -72,6 +77,10 @@ def test_generates_unique_reproducible_type_appropriate_values():
     assert generated["EMAIL_ADDRESS"].endswith("@example.invalid")
     assert re.fullmatch(r"\+1 202-555-01\d{2}", generated["PHONE_NUMBER"])
     assert generated["ORGANIZATION"].endswith("Test Systems Private Limited")
+    assert re.fullmatch(
+        r".+ \d{6} Test Systems Private Limited",
+        generated["ORGANIZATION"],
+    )
     assert "Example Road, Test Nagar" in generated["PHYSICAL_ADDRESS"]
     assert generated["US_SSN"].startswith("000-")
     assert _passes_luhn(generated["CREDIT_CARD"])
@@ -119,6 +128,49 @@ def test_encrypted_mapping_round_trips_without_plaintext_leakage(
     assert store.load(encrypted_path, key) == document
     with pytest.raises(MappingDecryptionError):
         store.load(encrypted_path, MappingEncryptionKey.generate())
+
+
+def test_pseudonymizes_adjacent_same_type_findings_without_merging_mappings():
+    text = "The Registrar of Companies, Maharashtra"
+    detector = _FixedDetector(
+        (
+            DetectedEntity("ORGANIZATION", 0, 27, 0.85, "stub"),
+            DetectedEntity("ORGANIZATION", 28, 39, 0.85, "stub"),
+        )
+    )
+    registry = DocumentPseudonymRegistry(seed=17)
+
+    result = PresidioPseudonymizer(detector, AnonymizerEngine()).pseudonymize(
+        text, registry
+    )
+
+    assert len(result.replacements) == 2
+    assert len(registry.records) == 2
+    assert all(record.occurrences == 1 for record in registry.records)
+    assert "Registrar" not in result.text
+    assert "Maharashtra" not in result.text
+
+
+def test_replays_known_values_missed_in_later_contexts():
+    registry = DocumentPseudonymRegistry(seed=17)
+    replacement = registry.replacement_for("PERSON", "Rashi Patil")
+
+    result = KnownValuePseudonymizer(registry).pseudonymize(
+        "Director RASHI PATIL signed.", registry
+    )
+
+    assert result.text == f"Director {replacement} signed."
+    assert registry.records[0].occurrences == 2
+
+
+class _FixedDetector:
+    def __init__(self, findings: tuple[DetectedEntity, ...]) -> None:
+        self._findings = findings
+
+    def detect(
+        self, text: str, entities: tuple[str, ...] | None = None
+    ) -> tuple[DetectedEntity, ...]:
+        return self._findings
 
 
 def _passes_luhn(value: str) -> bool:

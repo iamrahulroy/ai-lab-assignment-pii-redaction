@@ -1,5 +1,4 @@
 import hashlib
-import re
 import zipfile
 from io import BytesIO
 from pathlib import Path
@@ -20,7 +19,9 @@ class DocxValidationSuite:
     ) -> ValidationResult:
         self._validate_hashes(source_path, output_path, mapping)
         self._validate_package(output_path)
-        self._validate_originals_absent(output_path, mapping)
+        self._validate_mapped_occurrences_removed(
+            source_path, output_path, mapping
+        )
         image_count = self._validate_images(source_path, output_path)
         warnings = (
             ("embedded_images_replaced_without_ocr",) if image_count else ()
@@ -49,26 +50,32 @@ class DocxValidationSuite:
         Document(output_path)
 
     @staticmethod
-    def _validate_originals_absent(
-        output_path: Path, mapping: MappingDocument
+    def _validate_mapped_occurrences_removed(
+        source_path: Path,
+        output_path: Path,
+        mapping: MappingDocument,
     ) -> None:
-        originals = frozenset(
-            record.original.casefold()
-            for record in mapping.mappings
-            if record.original
+        with (
+            zipfile.ZipFile(source_path) as source,
+            zipfile.ZipFile(output_path) as output,
+        ):
+            source_text = "\n".join(_package_searchable_values(source)).casefold()
+            output_text = "\n".join(_package_searchable_values(output)).casefold()
+
+        replacements = tuple(
+            item.replacement.casefold() for item in mapping.mappings
         )
-        if not originals:
-            return
-        pattern = re.compile(
-            "|".join(re.escape(value) for value in sorted(originals))
-        )
-        with zipfile.ZipFile(output_path) as package:
-            for name in package.namelist():
-                if not name.endswith((".xml", ".rels")):
-                    continue
-                for value in _searchable_values(package.read(name)):
-                    if pattern.search(value.casefold()):
-                        raise ValueError("Original PII remains in output package")
+        for record in mapping.mappings:
+            original = record.original.casefold()
+            if any(original in value for value in replacements):
+                continue
+            removed = source_text.count(original) - output_text.count(original)
+            if removed <= 0:
+                raise ValueError(
+                    "Mapped PII occurrences were not removed "
+                    f"(type={record.entity_type}, length={len(record.original)}, "
+                    f"removed={removed})"
+                )
 
     @staticmethod
     def _validate_images(source_path: Path, output_path: Path) -> int:
@@ -107,6 +114,15 @@ def _searchable_values(data: bytes) -> tuple[str, ...]:
         value for element in root.iter() for value in element.attrib.values()
     )
     return paragraphs + text + attributes
+
+
+def _package_searchable_values(package: zipfile.ZipFile) -> tuple[str, ...]:
+    return tuple(
+        value
+        for name in package.namelist()
+        if name.endswith((".xml", ".rels"))
+        for value in _searchable_values(package.read(name))
+    )
 
 
 def _media(package: zipfile.ZipFile) -> dict[str, bytes]:

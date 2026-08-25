@@ -1,6 +1,8 @@
 import pytest
+from presidio_analyzer import RecognizerResult
 
 from pii_redactor.bootstrap import build_pii_detector
+from pii_redactor.detection import DeterministicDetectionResolver
 
 
 @pytest.fixture(scope="module")
@@ -108,3 +110,24 @@ def test_ignores_prospectus_numbers_dates_and_generic_company(detector):
     assert detected_types.isdisjoint(
         {"DATE_OF_BIRTH", "PHONE_NUMBER", "CREDIT_CARD", "ORGANIZATION"}
     )
+
+
+def test_rejects_incomplete_names_and_bare_legal_suffixes():
+    text = "A | Alice | Private Limited"
+    results = (
+        RecognizerResult("ORGANIZATION", 0, 1, 0.85),
+        RecognizerResult("PERSON", 4, 9, 0.85),
+        RecognizerResult("ORGANIZATION", 12, 27, 0.85),
+    )
+
+    assert DeterministicDetectionResolver().resolve(text, results) == ()
+
+
+def test_document_deny_list_detects_identifier_without_local_context():
+    detector = build_pii_detector({"IN_DIN": ("00135070",)})
+
+    findings = detector.detect("00135070")
+
+    assert [(item.entity_type, item.start, item.end) for item in findings] == [
+        ("IN_DIN", 0, 8)
+    ]

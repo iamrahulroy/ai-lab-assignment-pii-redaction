@@ -14,7 +14,13 @@ from pii_redactor.application import (
 )
 from pii_redactor.cli import build_parser, main
 from pii_redactor.docx_adapter import DocxRedactor
-from pii_redactor.domain import PseudonymizedText, TextReplacement
+from pii_redactor.domain import (
+    MappingDocument,
+    MappingMetadata,
+    MappingRecord,
+    PseudonymizedText,
+    TextReplacement,
+)
 from pii_redactor.mapping_store import EncryptedMappingStore, MappingKeyLoader
 from pii_redactor.publishing import AtomicBundlePublisher
 from pii_redactor.validation import DocxValidationSuite
@@ -63,6 +69,7 @@ def test_cli_publishes_docx_encrypted_mapping_and_pii_safe_audit(tmp_path):
     assert mapping.metadata.output_sha256 == _sha256(output_path)
     assert audit["source_sha256"] == source_hash
     assert audit["output_sha256"] == _sha256(output_path)
+    assert audit["mapping_sha256"] == _sha256(mapping_path)
     assert audit["entity_counts"] == {"EMAIL_ADDRESS": 1}
     assert audit["status"] == "success"
     assert ORIGINAL not in audit_path.read_text(encoding="utf-8")
@@ -72,6 +79,39 @@ def test_cli_publishes_docx_encrypted_mapping_and_pii_safe_audit(tmp_path):
     )
     assert "PII_REDACTOR_MAPPING_KEY" in build_parser().format_help()
     assert "non-zero" in build_parser().format_help()
+
+
+def test_validation_proves_mapped_occurrences_were_removed(tmp_path):
+    source_path = tmp_path / "source.docx"
+    output_path = tmp_path / "output.docx"
+    source = Document()
+    source.add_paragraph("Acme Limited filed. Acme Limited remains in appendix.")
+    source.save(source_path)
+    output = Document()
+    output.add_paragraph(
+        "Example Test Systems filed. Acme Limited remains in appendix."
+    )
+    output.save(output_path)
+    mapping = MappingDocument(
+        metadata=MappingMetadata(
+            source_sha256=_sha256(source_path),
+            output_sha256=_sha256(output_path),
+            config_version="1",
+            model_version="en_core_web_lg-3.8.0",
+        ),
+        mappings=(
+            MappingRecord(
+                entity_type="ORGANIZATION",
+                original="Acme Limited",
+                normalized_original="acme limited",
+                replacement="Example Test Systems",
+                # One mapping may aggregate normalized spelling/format variants.
+                occurrences=3,
+            ),
+        ),
+    )
+
+    DocxValidationSuite().validate(source_path, output_path, mapping)
 
 
 @pytest.mark.parametrize(

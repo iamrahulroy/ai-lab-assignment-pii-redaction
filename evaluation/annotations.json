@@ -1,0 +1,103 @@
+{
+  "schema_version": "1",
+  "datasets": {
+    "prospectus": [
+      {
+        "id": "prospectus-contact-block",
+        "source": "document.xml paragraphs 137-138",
+        "text": "Contact Person: Sarthak Malvadkar; Telephone: + 91 20 4505 3237; E-mail: cs.connect@kshinternational.com.",
+        "entities": [
+          {
+            "entity_type": "PERSON",
+            "value": "Sarthak Malvadkar"
+          },
+          {
+            "entity_type": "PHONE_NUMBER",
+            "value": "+ 91 20 4505 3237"
+          },
+          {
+            "entity_type": "EMAIL_ADDRESS",
+            "value": "cs.connect@kshinternational.com"
+          }
+        ]
+      },
+      {
+        "id": "prospectus-company-identity",
+        "source": "document.xml paragraphs 4084 and 4089",
+        "text": "Company: KSH International Limited. Corporate identity number: U28129PN1979PLC141032.",
+        "entities": [
+          {
+            "entity_type": "ORGANIZATION",
+            "value": "KSH International Limited"
+          },
+          {
+            "entity_type": "IN_CIN",
+            "value": "U28129PN1979PLC141032"
+          }
+        ]
+      },
+      {
+        "id": "prospectus-director-record",
+        "source": "document.xml paragraphs 4101-4104",
+        "text": "Director: Kushal Subbayya Hegde. DIN: 00135070. Address: S. no. 245/ 104, Pushpakamal, Deccan Gymkhana Society, lane no. 3 Prabhat Road, opposite PYC basketball court, Deccan Gymkhana, Pune – 411 004 Maharashtra, India.",
+        "entities": [
+          {
+            "entity_type": "PERSON",
+            "value": "Kushal Subbayya Hegde"
+          },
+          {
+            "entity_type": "IN_DIN",
+            "value": "00135070"
+          },
+          {
+            "entity_type": "PHYSICAL_ADDRESS",
+            "value": "S. no. 245/ 104, Pushpakamal, Deccan Gymkhana Society, lane no. 3 Prabhat Road, opposite PYC basketball court, Deccan Gymkhana, Pune – 411 004 Maharashtra, India"
+          }
+        ]
+      }
+    ],
+    "synthetic": [
+      {
+        "id": "synthetic-absent-required-types",
+        "text": "Employee SSN: 219-09-9999. Credit card: 4111 1111 1111 1111. Date of birth: 14 September 1988. Server IP: 192.0.2.10.",
+        "entities": [
+          {
+            "entity_type": "US_SSN",
+            "value": "219-09-9999"
+          },
+          {
+            "entity_type": "CREDIT_CARD",
+            "value": "4111 1111 1111 1111"
+          },
+          {
+            "entity_type": "DATE_OF_BIRTH",
+            "value": "14 September 1988"
+          },
+          {
+            "entity_type": "IP_ADDRESS",
+            "value": "192.0.2.10"
+          }
+        ]
+      },
+      {
+        "id": "synthetic-absent-indian-identifiers",
+        "text": "Tax identifiers: PAN AAAPA1234A and Aadhaar 2345 6789 0124.",
+        "entities": [
+          {
+            "entity_type": "IN_PAN",
+            "value": "AAAPA1234A"
+          },
+          {
+            "entity_type": "IN_AADHAAR",
+            "value": "2345 6789 0124"
+          }
+        ]
+      },
+      {
+        "id": "synthetic-negative-boundary",
+        "text": "Order 12345678 was received on December 10, 2025; the share price was Rs. 1,250.",
+        "entities": []
+      }
+    ]
+  }
+}

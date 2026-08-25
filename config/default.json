@@ -1,4 +1,7 @@
 {
   "config_version": "1",
-  "model_version": "en_core_web_lg-3.8.0"
+  "model_version": "en_core_web_lg-3.8.0",
+  "deny_lists": {
+    "IN_DIN": ["00135070"]
+  }
 }

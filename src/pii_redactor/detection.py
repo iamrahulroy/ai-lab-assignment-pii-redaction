@@ -1,3 +1,4 @@
+import re
 from collections.abc import Iterable
 
 from presidio_analyzer import RecognizerResult
@@ -63,6 +64,13 @@ GENERIC_ORGANIZATIONS = frozenset(
         "ip",
         "organisation",
         "pan",
+        "private limited",
+        "limited",
+        "ltd",
+        "llp",
+        "inc",
+        "incorporated",
+        "plc",
         "ssn",
     }
 )
@@ -85,10 +93,14 @@ class DeterministicDetectionResolver:
         if entity.score < MINIMUM_SCORES[entity.entity_type]:
             return False
         value = text[entity.start : entity.end].strip().casefold()
-        return not (
-            entity.entity_type == "ORGANIZATION"
-            and value in GENERIC_ORGANIZATIONS
-        )
+        if entity.entity_type == "PERSON":
+            return len(re.findall(r"[^\W\d_]+", value)) >= 2
+        if entity.entity_type == "ORGANIZATION":
+            return (
+                sum(character.isalpha() for character in value) >= 2
+                and value not in GENERIC_ORGANIZATIONS
+            )
+        return True
 
     @staticmethod
     def _rank(entity: DetectedEntity) -> tuple[float, int, int, int, str]:

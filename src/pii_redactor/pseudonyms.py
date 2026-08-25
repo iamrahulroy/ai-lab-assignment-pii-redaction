@@ -7,7 +7,14 @@ from dataclasses import replace
 
 from faker import Faker
 
-from pii_redactor.domain import MappingDocument, MappingMetadata, MappingRecord
+from pii_redactor.domain import (
+    MappingDocument,
+    MappingMetadata,
+    MappingRecord,
+    PseudonymizedText,
+    PseudonymRegistry,
+    TextReplacement,
+)
 
 
 Generator = Callable[[Faker, str], str]
@@ -93,6 +100,54 @@ class DocumentPseudonymRegistry:
         raise RuntimeError(f"Could not generate a unique {entity_type} replacement")
 
 
+class KnownValuePseudonymizer:
+    """Replays established mappings where contextual NER was inconsistent."""
+
+    def __init__(self, registry: PseudonymRegistry) -> None:
+        records = registry.records
+        replacements = tuple(item.replacement.casefold() for item in records)
+        by_original: dict[str, MappingRecord] = {}
+        ambiguous: set[str] = set()
+        for record in records:
+            key = record.original.casefold()
+            if key in by_original and by_original[key].entity_type != record.entity_type:
+                ambiguous.add(key)
+            elif len(record.original.strip()) >= 5 and not any(
+                key in replacement for replacement in replacements
+            ):
+                by_original[key] = record
+        for key in ambiguous:
+            by_original.pop(key, None)
+        self._records = by_original
+        alternatives = sorted(by_original, key=len, reverse=True)
+        self._pattern = (
+            re.compile("|".join(re.escape(value) for value in alternatives), re.I)
+            if alternatives
+            else None
+        )
+
+    def pseudonymize(
+        self, text: str, registry: PseudonymRegistry
+    ) -> PseudonymizedText:
+        if self._pattern is None:
+            return PseudonymizedText(text, ())
+        replacements = tuple(
+            TextReplacement(
+                match.start(),
+                match.end(),
+                registry.replacement_for(
+                    self._records[match.group().casefold()].entity_type,
+                    match.group(),
+                ),
+            )
+            for match in self._pattern.finditer(text)
+        )
+        redacted = text
+        for item in reversed(replacements):
+            redacted = redacted[: item.start] + item.value + redacted[item.end :]
+        return PseudonymizedText(redacted, replacements)
+
+
 def _person(faker: Faker, _: str) -> str:
     return faker.name()
 
@@ -106,7 +161,8 @@ def _phone(faker: Faker, _: str) -> str:
 
 
 def _organization(faker: Faker, _: str) -> str:
-    return f"{faker.last_name()} Test Systems Private Limited"
+    identifier = faker.random_int(0, 999_999)
+    return f"{faker.last_name()} {identifier:06d} Test Systems Private Limited"
 
 
 def _address(faker: Faker, _: str) -> str:

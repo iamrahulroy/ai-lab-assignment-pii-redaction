@@ -19,12 +19,12 @@ SUPPORTED_CONFIG_VERSION = "1"
 SUPPORTED_MODEL_VERSION = "en_core_web_lg-3.8.0"
 
 
-def build_pii_detector() -> PresidioDetector:
-    return build_presidio_detector()
+def build_pii_detector(deny_lists=None) -> PresidioDetector:
+    return build_presidio_detector(deny_lists)
 
 
-def build_redact_document(seed: int) -> RedactDocument:
-    detector = build_pii_detector()
+def build_redact_document(seed: int, deny_lists=None) -> RedactDocument:
+    detector = build_pii_detector(deny_lists)
     return RedactDocument(
         document_redactor=DocxRedactor(),
         text_pseudonymizer=build_presidio_pseudonymizer(detector),
@@ -42,7 +42,7 @@ def build_redaction_bundle(
     return CreateRedactionBundle(
         config=config,
         services=BundleServices(
-            redact_document=build_redact_document(seed),
+            redact_document=build_redact_document(seed, config.deny_lists),
             mapping_store=EncryptedMappingStore(),
             validator=DocxValidationSuite(),
             publisher=AtomicBundlePublisher(),
