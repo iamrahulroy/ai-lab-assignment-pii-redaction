@@ -11,6 +11,16 @@ class MappingRecord:
 
 
 @dataclass(frozen=True)
+class DetectedEntity:
+    entity_type: str
+    start: int
+    end: int
+    score: float
+    recognizer_name: str
+    context: str | None = None
+
+
+@dataclass(frozen=True)
 class TextReplacement:
     start: int
     end: int
@@ -52,4 +62,11 @@ class PseudonymRegistry(Protocol):
 
     @property
     def records(self) -> tuple[MappingRecord, ...]:
+        ...
+
+
+class PiiDetector(Protocol):
+    def detect(
+        self, text: str, entities: tuple[str, ...] | None = None
+    ) -> tuple[DetectedEntity, ...]:
         ...
