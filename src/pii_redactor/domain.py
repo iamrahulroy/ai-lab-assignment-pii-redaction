@@ -7,7 +7,24 @@ from typing import Callable, Protocol
 class MappingRecord:
     entity_type: str
     original: str
+    normalized_original: str
     replacement: str
+    occurrences: int = 1
+
+
+@dataclass(frozen=True)
+class MappingMetadata:
+    source_sha256: str
+    config_version: str
+    model_version: str
+    output_sha256: str | None = None
+    schema_version: str = "1"
+
+
+@dataclass(frozen=True)
+class MappingDocument:
+    metadata: MappingMetadata
+    mappings: tuple[MappingRecord, ...]
 
 
 @dataclass(frozen=True)
@@ -58,6 +75,9 @@ class DocumentRedactor(Protocol):
 
 class PseudonymRegistry(Protocol):
     def replacement_for(self, entity_type: str, original: str) -> str:
+        ...
+
+    def existing_replacement_for(self, entity_type: str, original: str) -> str:
         ...
 
     @property

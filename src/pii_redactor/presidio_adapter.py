@@ -22,7 +22,7 @@ from pii_redactor.domain import (
     PseudonymRegistry,
     TextReplacement,
 )
-from pii_redactor.recognizers import EMAIL_ADDRESS, build_custom_recognizers
+from pii_redactor.recognizers import build_custom_recognizers
 
 
 class PresidioDetector:
@@ -45,7 +45,7 @@ class PresidioDetector:
         return self._resolver.resolve(text, results)
 
 
-class PresidioEmailPseudonymizer:
+class PresidioPseudonymizer:
     def __init__(self, detector: PiiDetector, anonymizer: AnonymizerEngine) -> None:
         self._detector = detector
         self._anonymizer = anonymizer
@@ -53,34 +53,43 @@ class PresidioEmailPseudonymizer:
     def pseudonymize(
         self, text: str, registry: PseudonymRegistry
     ) -> PseudonymizedText:
-        findings = self._detector.detect(text, (EMAIL_ADDRESS,))
+        findings = self._detector.detect(text)
         if not findings:
             return PseudonymizedText(text=text, replacements=())
 
-        operator = OperatorConfig(
-            "custom",
-            {
-                "lambda": lambda original: registry.replacement_for(
-                    EMAIL_ADDRESS, original
-                )
-            },
-        )
+        operators = {
+            item.entity_type: self._operator_for(item.entity_type, registry)
+            for item in findings
+        }
         anonymized = self._anonymizer.anonymize(
             text=text,
             analyzer_results=[self._as_anonymizer_result(item) for item in findings],
-            operators={EMAIL_ADDRESS: operator},
+            operators=operators,
         )
         replacements = tuple(
             TextReplacement(
                 start=item.start,
                 end=item.end,
-                value=registry.replacement_for(
+                value=registry.existing_replacement_for(
                     item.entity_type, text[item.start : item.end]
                 ),
             )
             for item in findings
         )
         return PseudonymizedText(text=anonymized.text, replacements=replacements)
+
+    @staticmethod
+    def _operator_for(
+        entity_type: str, registry: PseudonymRegistry
+    ) -> OperatorConfig:
+        return OperatorConfig(
+            "custom",
+            {
+                "lambda": lambda original: registry.replacement_for(
+                    entity_type, original
+                )
+            },
+        )
 
     @staticmethod
     def _as_anonymizer_result(entity: DetectedEntity) -> RecognizerResult:
@@ -151,7 +160,7 @@ def build_presidio_detector() -> PresidioDetector:
     return PresidioDetector(analyzer, DeterministicDetectionResolver())
 
 
-def build_presidio_email_pseudonymizer(
+def build_presidio_pseudonymizer(
     detector: PiiDetector,
-) -> PresidioEmailPseudonymizer:
-    return PresidioEmailPseudonymizer(detector, AnonymizerEngine())
+) -> PresidioPseudonymizer:
+    return PresidioPseudonymizer(detector, AnonymizerEngine())

@@ -47,5 +47,6 @@ def test_redacts_a_styled_email_into_a_separate_docx(tmp_path):
     mapping = result.mappings[0]
     assert mapping.entity_type == "EMAIL_ADDRESS"
     assert mapping.original == "rashi.patil@example.com"
+    assert mapping.occurrences == 2
     assert mapping.replacement.endswith("@example.invalid")
     assert redacted_text.count(mapping.replacement) == 2

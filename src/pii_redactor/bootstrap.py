@@ -3,7 +3,7 @@ from pii_redactor.docx_adapter import DocxRedactor
 from pii_redactor.presidio_adapter import (
     PresidioDetector,
     build_presidio_detector,
-    build_presidio_email_pseudonymizer,
+    build_presidio_pseudonymizer,
 )
 
 
@@ -15,6 +15,6 @@ def build_redact_document(seed: int) -> RedactDocument:
     detector = build_pii_detector()
     return RedactDocument(
         document_redactor=DocxRedactor(),
-        text_pseudonymizer=build_presidio_email_pseudonymizer(detector),
+        text_pseudonymizer=build_presidio_pseudonymizer(detector),
         seed=seed,
     )
