@@ -56,6 +56,19 @@ class RedactionResult:
     mappings: tuple[MappingRecord, ...]
 
 
+@dataclass(frozen=True)
+class OutputBundle:
+    directory: Path
+    document_path: Path
+    mapping_path: Path
+    audit_path: Path
+
+
+@dataclass(frozen=True)
+class ValidationResult:
+    warnings: tuple[str, ...]
+
+
 class TextPseudonymizer(Protocol):
     def pseudonymize(
         self, text: str, registry: "PseudonymRegistry"

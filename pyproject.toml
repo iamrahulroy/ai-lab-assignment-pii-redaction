@@ -18,6 +18,9 @@ dependencies = [
     "spacy==3.8.16",
 ]
 
+[project.scripts]
+pii-redactor = "pii_redactor.cli:entrypoint"
+
 [project.optional-dependencies]
 dev = [
     "pdf2image==1.17.0",
